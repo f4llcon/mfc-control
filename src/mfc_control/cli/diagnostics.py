@@ -35,23 +35,25 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         results['errors'].append("propar library not installed")
         return results
 
-    # Step 1: Can we open the port?
+    master = None
     try:
-        master = propar.master(com_port, baudrate=baudrate)
-        results['port_opens'] = True
-        logger.info(f"✓ Port {com_port} opened successfully")
-    except Exception as e:
-        results['errors'].append(f"Cannot open port: {e}")
-        return results
+        # Step 1: Can we open the port?
+        try:
+            master = propar.master(com_port, baudrate=baudrate)
+            results['port_opens'] = True
+            logger.info(f"✓ Port {com_port} opened successfully")
+        except Exception as e:
+            results['errors'].append(f"Cannot open port: {e}")
+            return results
 
-    # Step 2: Can we start the master?
-    try:
-        master.start()
-        results['master_starts'] = True
-        logger.info(f"✓ Master started on {com_port}")
-    except Exception as e:
-        results['errors'].append(f"Cannot start master: {e}")
-        return results
+        # Step 2: Can we start the master?
+        try:
+            master.start()
+            results['master_starts'] = True
+            logger.info(f"✓ Master started on {com_port}")
+        except Exception as e:
+            results['errors'].append(f"Cannot start master: {e}")
+            return results
 
     # Step 3: Can we find nodes?
     try:
@@ -103,13 +105,15 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         except Exception as e:
             results['errors'].append(f"Cannot create instrument: {e}")
 
-    # Cleanup
-    try:
-        master.stop()
-    except:
-        pass
-
-    return results
+        return results
+    finally:
+        # Cleanup - ALWAYS close the connection
+        if master is not None:
+            try:
+                master.stop()
+                logger.debug(f"Closed connection to {com_port}")
+            except Exception as e:
+                logger.debug(f"Error during cleanup: {e}")
 
 
 def test_multiple_baudrates(com_port: str, node_address: int) -> dict[int, dict]:
