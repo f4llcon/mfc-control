@@ -1,0 +1,956 @@
+classdef Flammenrechner_H2_Air_CH4AlexsVersion < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                        matlab.ui.Figure
+        MFCsCheckenButton               matlab.ui.control.Button
+        AirWertEditField                matlab.ui.control.NumericEditField
+        AirWertEditFieldLabel           matlab.ui.control.Label
+        AirSpinner                      matlab.ui.control.Spinner
+        AirSpinnerLabel                 matlab.ui.control.Label
+        FlammeauspustenButton           matlab.ui.control.Button
+        MFCConnectButton                matlab.ui.control.Button
+        CoriFlowMessungButton           matlab.ui.control.Button
+        MFCDisconnectButton             matlab.ui.control.Button
+        MFCPanel                        matlab.ui.container.Panel
+        MFCRckmeldungTextArea           matlab.ui.control.TextArea
+        MFCRckmeldungTextAreaLabel      matlab.ui.control.Label
+        MesswertCoriFlowEditField       matlab.ui.control.EditField
+        MesswertCoriFlowEditFieldLabel  matlab.ui.control.Label
+        GemessenerDurchflussTextArea    matlab.ui.control.TextArea
+        GemessenerDurchflussTextAreaLabel  matlab.ui.control.Label
+        bergebeneSollpositionenTextArea  matlab.ui.control.TextArea
+        bergebeneSollpositionenTextAreaLabel  matlab.ui.control.Label
+        LeistungEditField               matlab.ui.control.NumericEditField
+        LeistungEditFieldLabel          matlab.ui.control.Label
+        VorgabemodusLeistungCheckBox    matlab.ui.control.CheckBox
+        LeistungVorgabe                 matlab.ui.control.NumericEditField
+        LeistungEditField_2Label        matlab.ui.control.Label
+        MFCbergabeButton                matlab.ui.control.Button
+        Phi_VorgabeEditField            matlab.ui.control.NumericEditField
+        Phi_VorgabeEditFieldLabel       matlab.ui.control.Label
+        V_gesEditField                  matlab.ui.control.NumericEditField
+        V_gesEditFieldLabel             matlab.ui.control.Label
+        VorgabemodusVolumenCheckBox     matlab.ui.control.CheckBox
+        BerechnenButton                 matlab.ui.control.Button
+        RealbedingungswerteLabel        matlab.ui.control.Label
+        AusgabeLabel                    matlab.ui.control.Label
+        EingabeLabel                    matlab.ui.control.Label
+        PhiEditField                    matlab.ui.control.NumericEditField
+        PhiEditFieldLabel               matlab.ui.control.Label
+        H2_WertEditField                matlab.ui.control.NumericEditField
+        H2_WertEditFieldLabel           matlab.ui.control.Label
+        CH4_WertEditField               matlab.ui.control.NumericEditField
+        CH4_WertEditFieldLabel          matlab.ui.control.Label
+        H2Spinner                       matlab.ui.control.Spinner
+        H2SpinnerLabel                  matlab.ui.control.Label
+        CH4Spinner                      matlab.ui.control.Spinner
+        CH4SpinnerLabel                 matlab.ui.control.Label
+        UmrechnungsauswahlButtonGroup   matlab.ui.container.ButtonGroup
+        MFCWertzuRealwertButton         matlab.ui.control.ToggleButton
+        RealwertzuMFCWertButton         matlab.ui.control.ToggleButton
+    end
+
+    
+    properties (Access = private)
+        %% Stoffdaten Wasserstoff
+        H2_Density = 0.0899; % Dichte von H2 in kg/m^3
+        H2_MW = 2.02;  % Molare Masse von H2 in g/mol
+        H2_dynVis = 0.000008377; % Dyn Viskosität von H2 in Pas
+        H2_LHV = 120; % Unterer Heizwert von H2 in MJ/kg
+        %% Stoffdaten Druckluft
+        Air_Density = 1.293; % Dichte von Druckluft in kg/m^3
+        Air_MW = 28.96;  % Molare Masse von Druckluft in g/mol
+        Air_dynVis = 0.00001722; % Dyn Viskosität von Druckluft in Pas
+        %% Stoffdaten Methan
+        CH4_Density = 0.7175;% Dichte von CH4 in kg/m^3
+        CH4_MW = 16.04; % Molare Masse von CH4 in g/mol
+        CH4_dynVis = 0.0000103945; % Dyn Viskosität von CH4 in Pas
+        CH4_LHV = 50.013; % Unterer Heizwert von CH4        
+        
+        %% Allgemeine Variablen
+        mu_m % Dyn Viskosität der Mischung nach Wilke
+        X_Total % Gesamtvolumen
+        X_H2 % Volumenbruch H2
+        X_Air % % Volumenbruch Druckluft
+        X_CH4 % Volumenbruch CH4
+        MFC_Air % Mass Flow Controller Air
+        MFC_H2 % Mass Flow Controller H2
+        MFC_CH4 % Mass Flow Controller CH4
+        Cori_Flow % mini Cori Flow
+        Datenbank % Eingelesene Excelliste
+
+        
+    end
+    
+    methods (Access = private)
+
+        %% Funktion um Rechenwerte zu Null zu setzen
+        function BerechnungNullen(app)
+            app.PhiEditField.Value = 0;
+            app.LeistungEditField.Value = 0;
+        end
+
+        %% Funktion, um MFC-Werte auszulesen
+        function MFCWertewiedergeben(app)
+            %% Ermittlung Sollwerte
+            MFC_Air_Tag = app.MFC_Air.readParameter(115); % Auslesen der MFC Beschriftung
+            MFC_H2_Tag = app.MFC_H2.readParameter(115); % Auslesen der MFC Beschriftung
+            MFC_CH4_Tag = app.MFC_CH4.readParameter(115); % Auslesen der MFC Beschriftung
+            Cori_Flow_Tag = app.Cori_Flow.readParameter(115); % Auslesen der MFC Beschriftung
+
+            Air_Soll = double(app.MFC_Air.readParameter(206)); % Auslesen des Soll-Volumenstromes
+            H2_Soll = double(app.MFC_H2.readParameter(206)); % Auslesen des Soll-Volumenstromes
+            CH4_Soll = double(app.MFC_CH4.readParameter(206)); % Auslesen des Soll-Volumenstromes
+
+            app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Sollwerte wurden ausgelesen!'];
+            app.bergebeneSollpositionenTextArea.Value = [strcat('Name für MFC_CH4:',{' '}, string(MFC_CH4_Tag) ,{'     '},'Soll-Stellwert CH4:',{' '}, string(CH4_Soll),{' '},'l/min');...
+                strcat('Name für MFC_H2:',{' '}, string(MFC_H2_Tag) ,{'     '},'Soll-Stellwert H2:',{' '}, string(H2_Soll),{' '},'l/min');...
+                strcat('Name für MFC_Air:',{' '}, string(MFC_Air_Tag) ,{'     '},'Soll-Stellwert Air:',{' '}, string(Air_Soll),{' '},'l/min')];
+
+            cnt =1;
+
+            %% Auslesen der Ist-Werte
+            cntup = 4;
+
+            while cnt <=cntup
+                app.Anmerkung = '';
+
+                Air_Ist = double(app.MFC_Air.readParameter(205)); % Auslesen des Ist-Volumenstromes
+                H2_Ist = double(app.MFC_H2.readParameter(205)); % Auslesen des Ist-Volumenstromes
+                CH4_Ist = double(app.MFC_CH4.readParameter(205)); % Auslesen des Ist-Volumenstromes
+
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Istwerte wurden ausgelesen!'];
+
+                app.GemessenerDurchflussTextArea.Value = [strcat('Abruf der Istwerte:',string(cnt),'/',string(cntup));strcat('Istwert CH4:',{' '}, string(CH4_Ist),{' '},'l/min');...
+                    strcat('Istwert H2:',{' '}, string(H2_Ist),{' '},'l/min');...
+                    strcat('Istwert Air:',{' '}, string(Air_Ist),{' '},'l/min')];
+
+                %% Überprüfen, ob Abweichung von Ist-Wert zu Soll-Wert zu groß
+                Air_Dvt = abs(Air_Soll - Air_Ist);
+                H2_Dvt = abs(H2_Soll - H2_Ist);
+                CH4_Dvt = abs(CH4_Soll - CH4_Ist);
+
+                if Air_Dvt >= 0.05
+                    app.GemessenerDurchflussTextArea.Value = [app.GemessenerDurchflussTextArea.Value;'Zu hohe Abweichung bei der Druckluft!'];
+                    app.Anmerkung = 'Zu hohe Abweichung bei der Druckluft';
+                elseif H2_Dvt >= 0.05
+                     app.GemessenerDurchflussTextArea.Value = [app.GemessenerDurchflussTextArea.Value;'Zu hohe Abweichung beim Wasserstoff!'];
+                     app.Anmerkung = [app.Anmerkung;'Zu hohe Abweichung beim Wasserstoff!'];
+                elseif CH4_Dvt >= 0.05
+                    app.GemessenerDurchflussTextArea.Value = [app.GemessenerDurchflussTextArea.Value;'Zu hohe Abweichung beim Methan!'];
+                    app.Anmerkung = [app.Anmerkung;'Zu hohe Abweichung beim Methan!'];
+                else
+                    app.GemessenerDurchflussTextArea.Value = [app.GemessenerDurchflussTextArea.Value;'Alle Werte sind erfüllt!'];
+                end
+                %drawnow
+                pause(5);
+                cnt = cnt+1;
+            end
+        end
+
+        %% Funktion um MFC zu verbinden
+        function MFCVerbinden(app)
+            pyenv(Version="C:\Users\ux68onut\AppData\Local\anaconda3\python.exe"); % Env mit Miniforge auf eigenen PC erstellt
+            %pyenv(Version="C:\Users\fy37soka\AppData\Local\miniforge3\envs\MFC_Connect\pythonw.exe"); % Env mit Miniforge auf Messtechnik 2 Labor PC erstellt
+            py.importlib.import_module('propar');
+            py.importlib.import_module('builtins');
+
+            pause(10);
+
+            app.MFC_Air = py.propar.instrument('COM1', int8(10)); % 'COMi' ist vom Anschluss der MFCs an den Computer abhängig, in den Computereinstellungen überprüfen
+            app.MFC_H2 = py.propar.instrument('COM1', int8(7)); % Profil 0 N2 (5ln/min), Profil 1 H2 (2ln/min), Profil 2 N2 (2ln/min, 3bar in), Profil 3 He (3ln/min, 3bar in)
+            app.MFC_CH4 = py.propar.instrument('COM1', int8(1));
+            app.Cori_Flow = py.propar.instrument('COM1', int8(6));
+
+
+            pause(5);
+
+            try
+                app.MFC_Air.master.start
+                app.MFC_Air.writeParameter(1,'2');      % wink
+                app.MFC_H2.writeParameter(1,'2');      % wink
+                app.MFC_CH4.writeParameter(1,'2');      % wink
+                app.Cori_Flow.writeParameter(1,'2');      % wink
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Das Verbinden mit den MFCs war erfolgreich!'];
+            catch
+                app.MFC_Air.master.stop
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Das Verbinden mit den MFCs ist fehlgeschlagen!'];
+            end
+
+        assignin('base', 'app', app);
+        end
+    end
+    
+    methods (Access = public)
+        function stopFlamme(app)
+            % Ruft die private Callback-Funktion des Buttons auf
+            app.FlammeauspustenButtonPushed([]);
+        end
+    end
+
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+        app.EingabeLabel.Text  = 'Real';
+        app.AusgabeLabel.Text  = 'MFC';
+        MFCVerbinden(app);
+        end
+
+        % Value changed function: CH4Spinner
+        function CH4SpinnerValueChanged(app, event)
+            CH4_value = app.CH4Spinner.Value;
+            % Alle Berechnungswerte werden zurückgesetzt
+            BerechnungNullen(app);
+            %Erstellen der Matrizen aus den Kalibrierungen
+            MFC_Wert_CH4 = 1:-0.1:0;
+            Real_CH4 = [0.325 0.286 0.251 0.215 0.182 0.151 0.120 0.089 0.058 0.028 0];
+            %Interpolation des Realwertes bei eingegebenen MFC-Wert
+            if app.MFCWertzuRealwertButton.Value == 1 
+                CH4_interp = interp1(MFC_Wert_CH4,Real_CH4,CH4_value,'linear','extrap');
+                % Abfrage, ob Realwert überhaupt realisierbar mit MFC
+                    if CH4_interp >= 0.325
+                        app.MFCRckmeldungTextArea.FontColor = 'r';
+                        app.MFCRckmeldungTextArea.Value = 'CH4-Realwert nicht realisierbar!';
+                        app.MFCRckmeldungTextArea.FontColor = 'b';
+                    end
+                % Ausgabe des intepolierten MFC-Wertes
+                app.CH4_WertEditField.Value = CH4_interp; 
+            %Interpolation des MFC-Wertes bei eingegebenen Realwert
+            elseif app.RealwertzuMFCWertButton.Value == 1
+                % Abfrage, ob Realwert überhaupt realisierbar mit MFC
+                    if CH4_value >= 0.325
+                        app.MFCRckmeldungTextArea.FontColor = 'r';
+                        app.MFCRckmeldungTextArea.Value = 'CH4-Wert nicht realisierbar!';
+                        app.MFCRckmeldungTextArea.FontColor = 'b';
+                    end
+                %Interpolation
+                CH4_interp = interp1(Real_CH4,MFC_Wert_CH4,CH4_value,'linear','extrap');
+                % Ausgabe des intepolierten Realwertes
+                app.CH4_WertEditField.Value = CH4_interp;
+            end
+        end
+
+        % Value changed function: H2Spinner
+        function H2SpinnerValueChanged(app, event)
+            H2_value = app.H2Spinner.Value;
+            BerechnungNullen(app);
+            MFC__Wert_H2 = [2:-0.2:1 0.9:-0.1:0];
+            Real_H2 = [2.019 1.802 1.602 1.405 1.201 1.005 0.899 0.795 0.703 0.595 0.493 0.393 0.291 0.197 0.111 0];
+            if app.MFCWertzuRealwertButton.Value == 1 
+                H2_interp = interp1(MFC__Wert_H2,Real_H2,H2_value,'linear','extrap');
+                if H2_interp >= 2.05
+                    app.MFCRckmeldungTextArea.FontColor = 'r';
+                    app.MFCRckmeldungTextArea.Value = 'H2-Wert nicht kalibriert!';
+                    app.MFCRckmeldungTextArea.FontColor = 'b';
+                end
+                app.H2_WertEditField.Value = H2_interp; 
+            elseif app.RealwertzuMFCWertButton.Value == 1
+                if H2_value >= 2.05
+                app.MFCRckmeldungTextArea.FontColor = 'r';
+                app.MFCRckmeldungTextArea.Value = 'H2-Wert nicht kalibriert!';
+                app.MFCRckmeldungTextArea.FontColor = 'b';
+                end
+                H2_interp = interp1(Real_H2,MFC__Wert_H2,H2_value,'linear','extrap');
+                app.H2_WertEditField.Value = H2_interp;
+            end
+        end
+
+        % Value changed function: AirSpinner
+        function AirSpinnerValueChanged(app, event)
+            Air_value = app.AirSpinner.Value;
+            BerechnungNullen(app);
+            % Werte für MFC SNM24204786A
+            MFC_Wert_Air = [1.4:-0.2:1 0.9:-0.1:0.4 0.35:-0.05:0.05 0];
+            Real_Air = [1.826 1.566 1.307 1.176 1.046 0.916 0.783 0.654 0.525 0.460 0.395 0.330 0.265 0.200 0.135 0.069 0];
+            if app.MFCWertzuRealwertButton.Value == 1 
+                Air_interp = interp1(MFC_Wert_Air,Real_Air,Air_value,'linear','extrap');
+                if Air_interp >= 2.05
+                    app.MFCRckmeldungTextArea.FontColor = 'r';
+                    app.MFCRckmeldungTextArea.Value = 'Air-Wert nicht kalibriert! Bzw. keine Ahnung. Wieß nicht bis wohin kalibriert ist';
+                    app.MFCRckmeldungTextArea.FontColor = 'b';
+                end
+                app.Air_WertEditField.Value = Air_interp; 
+            elseif app.RealwertzuMFCWertButton.Value == 1
+                if Air_value >= 2.05
+                    app.MFCRckmeldungTextArea.FontColor = 'r';
+                    app.MFCRckmeldungTextArea.Value = 'Air-Wert nicht kalibriert! Bzw. keine Ahnung. Wieß nicht bis wohin kalibriert ist';
+                    app.MFCRckmeldungTextArea.FontColor = 'b';
+                end
+                Air_interp = interp1(Real_Air,MFC_Wert_Air,Air_value,'linear','extrap');
+                app.AirWertEditField.Value = Air_interp;
+            end
+            % if app.RealwertzuMFCWertButton.Value == 1
+            %     app.AirSpinner.Value = 4.762 * app.AirSpinner.Value;
+            %     app.AirWertEditField.Value = interp1(Real_Air,MFC_Wert_Air,app.AirSpinner.Value,'linear','extrap');
+            % elseif app.MFCWertzuRealwertButton.Value == 1
+            %     app.AirWertEditField.Value = 4.762 * app.Air_WertEditField.Value;
+            %     app.AirSpinner.Value = interp1(MFC_Wert_Air,Real_Air,app.AirWertEditField.Value,'linear','extrap');
+            % end
+        end
+
+        % Selection changed function: UmrechnungsauswahlButtonGroup
+        function UmrechnungsauswahlButtonGroupSelectionChanged(app, event)
+            selectedButton = app.UmrechnungsauswahlButtonGroup.SelectedObject;
+            if selectedButton == app.MFCWertzuRealwertButton
+                app.EingabeLabel.Text = 'MFC';
+                app.AusgabeLabel.Text  = 'Real';
+                AirSpinnerValueChanged(app, event);
+                H2SpinnerValueChanged(app, event);
+                CH4SpinnerValueChanged(app, event);
+            elseif selectedButton == app.RealwertzuMFCWertButton
+                app.EingabeLabel.Text  = 'Real';
+                app.AusgabeLabel.Text  = 'MFC';
+                AirSpinnerValueChanged(app, event);
+                H2SpinnerValueChanged(app, event);
+                CH4SpinnerValueChanged(app, event);
+            end
+        end
+
+        % Value changed function: PhiEditField
+        function PhiEditFieldValueChanged(app, event)
+            %Berechnung des Äquivalenzverhältnisses
+            if app.MFCWertzuRealwertButton.Value == 1
+                Air_stochio = 4.762*(0.5*app.H2_WertEditField.Value+ 2*app.CH4_WertEditField.Value);
+                if Air_stochio ~= 0
+                    app.PhiEditField.Value = 1/(app.Air_interp/Air_stochio);
+                else
+                    app.PhiEditField.Value = 0;  
+                end
+            elseif app.RealwertzuMFCWertButton.Value == 1
+                Air_stochio = 4.762*(0.5*app.H2Spinner.Value+ 2*app.CH4Spinner.Value);
+                if Air_stochio ~= 0
+                    app.PhiEditField.Value = 1/(app.AirSpinner.Value/Air_stochio);
+                else
+                    app.PhiEditField.Value = 0; 
+                end
+            end
+        end
+
+        % Button pushed function: BerechnenButton
+        function BerechnenButtonPushed(app, event)
+            %% Brechnung aller Volumenströmen je nach Vorgabemodus und Randbedingungen
+            if app.VorgabemodusVolumenCheckBox.Value == 1
+                app.RealwertzuMFCWertButton.Value = 1;
+                UmrechnungsauswahlButtonGroupSelectionChanged(app, event);
+
+                %% Hydrogen-Oxyfuel (Methan-Hydrogen etc. not implemented)
+                V_Ges = app.V_gesEditField.Value;
+                Phi = app.Phi_VorgabeEditField.Value;
+                syms V_H2 V_Air
+                eq1 = V_H2 + V_Air == V_Ges;
+                eq2 = 0.5*4.762*V_H2/V_Air == Phi;
+                sol = solve([eq1,eq2],[V_H2,V_Air]);
+                app.H2Spinner.Value = double(sol.V_H2);
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = double(sol.V_Air);
+                AirSpinnerValueChanged(app,event);
+             
+                AirSpinnerValueChanged(app, event);
+                PhiEditFieldValueChanged(app, event);
+                LeistungEditFieldValueChanged(app, event);
+            %% Leistungsvorgabe
+            elseif app.VorgabemodusLeistungCheckBox.Value == 1
+                app.RealwertzuMFCWertButton.Value = 1;
+                UmrechnungsauswahlButtonGroupSelectionChanged(app, event)
+                
+                %% Hydrogen-Oxyfuel (Methan-Hydrogen etc. not implemented)
+                Leistung = app.LeistungVorgabe.Value;
+                Phi = app.Phi_VorgabeEditField.Value;
+                syms V_H2 V_Air
+                eq1 = V_H2* (0.001/60)* app.H2_Density * app.H2_LHV * (10^6) == Leistung;
+                eq2 = 0.5*4.762*V_H2/V_Air == Phi; % * 0.019307383/0.022427823 (evtl. als Korrekturfaktor mit dazu, Verhältnis der molaren Volumina
+                sol = solve([eq1,eq2],[V_H2,V_Air]);
+                app.H2Spinner.Value = double(sol.V_H2);
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = double(sol.V_Air);
+                AirSpinnerValueChanged(app,event);
+
+                AirSpinnerValueChanged(app, event);
+                PhiEditFieldValueChanged(app, event);
+                LeistungEditFieldValueChanged(app, event);
+            else
+                AirSpinnerValueChanged(app, event);
+                PhiEditFieldValueChanged(app, event);
+                LeistungEditFieldValueChanged(app, event);
+            end
+        end
+
+        % Value changed function: VorgabemodusVolumenCheckBox
+        function VorgabemodusVolumenCheckBoxValueChanged(app, event)
+            if app.VorgabemodusVolumenCheckBox.Value == 1
+                BerechnungNullen(app);
+                app.VorgabemodusLeistungCheckBox.Value = 0;
+                app.RealwertzuMFCWertButton.Value = 1;
+                app.CH4Spinner.Value = 0;
+                CH4SpinnerValueChanged(app,event);
+                app.H2Spinner.Value = 0;
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = 0;
+                AirSpinnerValueChanged(app,event);
+
+                app.CH4Spinner.Editable = false;
+                app.H2Spinner.Editable = false;
+                app.AirSpinner.Editable = false;
+                app.CH4Spinner.Enable = false;
+                app.H2Spinner.Enable = false;
+                app.AirSpinner.Enable = false;
+
+                app.V_gesEditField.Visible = true;
+                app.V_gesEditField.Editable = true;
+                app.V_gesEditField.Enable = true;
+                app.V_gesEditFieldLabel.Visible = true;
+
+                app.Phi_VorgabeEditField.Visible = true;
+                app.Phi_VorgabeEditField.Editable = true;
+                app.Phi_VorgabeEditField.Enable = true;
+                app.Phi_VorgabeEditFieldLabel.Visible = true;
+
+                app.LeistungVorgabe.Visible = false;
+                app.LeistungVorgabe.Editable = false;
+                app.LeistungVorgabe.Enable = false;
+                app.LeistungEditField_2Label.Visible = false;
+
+            else
+                BerechnungNullen(app);
+                app.PhiEditField.Editable = false;
+                app.CH4Spinner.Value = 0;
+                CH4SpinnerValueChanged(app,event);
+                app.H2Spinner.Value = 0;
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = 0;
+                AirSpinnerValueChanged(app,event);
+
+                app.CH4Spinner.Editable = true;
+                app.H2Spinner.Editable = true;
+                app.AirSpinner.Editable = true;
+                app.CH4Spinner.Enable = true;
+                app.H2Spinner.Enable = true;
+                app.AirSpinner.Enable = true;
+
+                app.V_gesEditField.Visible = false;
+                app.V_gesEditField.Editable = false;
+                app.V_gesEditField.Enable = false;
+                app.V_gesEditFieldLabel.Visible = false;
+                app.V_gesEditFieldLabel.Visible = false;
+
+                app.Phi_VorgabeEditField.Visible = false;
+                app.Phi_VorgabeEditField.Editable = false;
+                app.Phi_VorgabeEditField.Enable = false;
+                app.Phi_VorgabeEditFieldLabel.Visible = false;
+
+                app.LeistungVorgabe.Visible = false;
+                app.LeistungVorgabe.Editable = false;
+                app.LeistungVorgabe.Enable = false;
+                app.LeistungEditField_2Label.Visible = false;
+
+            end
+            
+        end
+
+        % Value changed function: LeistungEditField
+        function LeistungEditFieldValueChanged(app, event)
+           if app.MFCWertzuRealwertButton.Value == 1 
+           app.LeistungEditField.Value = app.H2_WertEditField.Value * (0.001/60)* app.H2_Density * app.H2_LHV * (10^6) +...
+           app.CH4_WertEditField.Value * (0.001/60)* app.CH4_Density * app.CH4_LHV * (10^6);
+           elseif app.RealwertzuMFCWertButton.Value == 1
+           app.LeistungEditField.Value = app.H2Spinner.Value * (0.001/60)* app.H2_Density * app.H2_LHV * (10^6) +...
+           app.CH4Spinner.Value * (0.001/60)* app.CH4_Density * app.CH4_LHV * (10^6);
+           end
+       
+        end
+
+        % Value changed function: VorgabemodusLeistungCheckBox
+        function VorgabemodusLeistungCheckBoxValueChanged(app, event)
+             if app.VorgabemodusLeistungCheckBox.Value == 1
+                app.VorgabemodusVolumenCheckBox.Value = 0;
+                app.RealwertzuMFCWertButton.Value = 1;
+                app.CH4Spinner.Value = 0;
+                CH4SpinnerValueChanged(app,event);
+                app.H2Spinner.Value = 0;
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = 0;
+                AirSpinnerValueChanged(app,event);
+
+                app.CH4Spinner.Editable = false;
+                app.H2Spinner.Editable = false;
+                app.AirSpinner.Editable = false;
+                app.CH4Spinner.Enable = false;
+                app.H2Spinner.Enable = false;
+                app.AirSpinner.Enable = false;
+
+                app.V_gesEditField.Visible = false;
+                app.V_gesEditField.Editable = false;
+                app.V_gesEditField.Enable = false;
+                app.V_gesEditFieldLabel.Visible = false;
+
+                app.LeistungVorgabe.Visible = true;
+                app.LeistungVorgabe.Editable = true;
+                app.LeistungVorgabe.Enable = true;
+                app.LeistungEditField_2Label.Visible = true;
+
+                app.Phi_VorgabeEditField.Visible = true;
+                app.Phi_VorgabeEditField.Editable = true;
+                app.Phi_VorgabeEditField.Enable = true;
+                app.Phi_VorgabeEditFieldLabel.Visible = true;
+
+            else
+                app.PhiEditField.Editable = false;
+                app.CH4Spinner.Value = 0;
+                CH4SpinnerValueChanged(app,event);
+                app.H2Spinner.Value = 0;
+                H2SpinnerValueChanged(app,event);
+                app.AirSpinner.Value = 0;
+                AirSpinnerValueChanged(app,event);
+
+                app.CH4Spinner.Editable = true;
+                app.H2Spinner.Editable = true;
+                app.AirSpinner.Editable = true;
+                app.CH4Spinner.Enable = true;
+                app.H2Spinner.Enable = true;
+                app.AirSpinner.Enable = true;
+
+                app.V_gesEditField.Visible = false;
+                app.V_gesEditField.Editable = false;
+                app.V_gesEditField.Enable = false;
+                app.V_gesEditFieldLabel.Visible = false;
+                app.V_gesEditFieldLabel.Visible = false;
+
+
+                app.Phi_VorgabeEditField.Visible = false;
+                app.Phi_VorgabeEditField.Editable = false;
+                app.Phi_VorgabeEditField.Enable = false;
+                app.Phi_VorgabeEditFieldLabel.Visible = false;
+
+                app.LeistungVorgabe.Visible = false;
+                app.LeistungVorgabe.Editable = false;
+                app.LeistungVorgabe.Enable = false;
+                app.LeistungEditField_2Label.Visible = false;
+            end
+        end
+
+        % Button pushed function: MFCbergabeButton
+        function MFCbergabeButtonPushed(app, event)
+            if app.RealwertzuMFCWertButton.Value == 1
+                app.MFC_Air.writeParameter(206,double(app.AirWertEditField.Value));
+                %H2 ist gleicher Port wie Inertgas gerade
+                app.MFC_H2.writeParameter(206,double(app.H2_WertEditField.Value));
+                app.MFC_CH4.writeParameter(206,double(app.CH4_WertEditField.Value));
+            else
+                app.MFC_Air.writeParameter(206,double(app.AirSpinner.Value));
+                %H2 ist gleicher Port wie Inertgas gerade
+                app.MFC_H2.writeParameter(206,double(app.H2Spinner.Value));
+                app.MFC_CH4.writeParameter(206,double(app.CH4Spinner.Value));
+            end
+            app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Sollwerte wurden übergeben!'];
+            MFCWertewiedergeben(app);
+        end
+
+        % Button pushed function: CoriFlowMessungButton
+        function CoriFlowMessungButtonPushed(app, event)
+           MesswertCoriFlowEditFieldValueChanged(app, event); 
+        end
+
+        % Value changed function: MesswertCoriFlowEditField
+        function MesswertCoriFlowEditFieldValueChanged(app, event)
+            app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'CoriFlow Messung gestartet!'];
+            app.MesswertCoriFlowEditField.Value = string(app.Cori_Flow.readParameter(205));
+            MFCWertewiedergeben(app);
+        end
+
+        % Button pushed function: MFCConnectButton
+        function MFCConnectButtonPushed(app, event)
+            MFCVerbinden(app);
+        end
+
+        % Button pushed function: MFCDisconnectButton
+        function MFCDisconnectButtonPushed(app, event)
+            app.MFC_Air.writeParameter(206,30);
+            app.MFC_H2.writeParameter(206,0);
+            app.MFC_CH4.writeParameter(206,0);
+            pause(10)
+            app.MFC_Air.writeParameter(206,0);
+            MFCWertewiedergeben(app);
+            app.MFC_Air.master.stop
+            app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'MFCs wurden getrennt!'];
+        end
+
+        % Button pushed function: FlammeauspustenButton
+        function FlammeauspustenButtonPushed(app, event)
+            app.MFC_Air.writeParameter(206,30);
+            app.MFC_H2.writeParameter(206,0);
+            app.MFC_CH4.writeParameter(206,0);
+            pause(10)
+            app.MFC_Air.writeParameter(206,0);
+            MFCWertewiedergeben(app);
+            app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'Flamme ausgepustet!'];
+        end
+
+        % Button pushed function: MFCsCheckenButton
+        function MFCsCheckenButtonPushed(app, event)
+                % MFC Zuordnung überprüfen
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'MFC Air winkt dir nun zu!'];
+                app.MFC_Air.writeParameter(1,'9');
+                pause(20)
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'MFC H2 winkt dir nun zu!'];
+                app.MFC_H2.writeParameter(1,'9');      % wink
+                pause(20)
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'MFC CH4 winkt dir nun zu!'];
+                app.MFC_CH4.writeParameter(1,'9');      % wink
+                pause(20)
+                app.MFCRckmeldungTextArea.Value = [app.MFCRckmeldungTextArea.Value;'CoriFlow winkt dir nun zu!'];
+                app.Cori_Flow.writeParameter(1,'9');      % wink
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 1006 787];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create UmrechnungsauswahlButtonGroup
+            app.UmrechnungsauswahlButtonGroup = uibuttongroup(app.UIFigure);
+            app.UmrechnungsauswahlButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @UmrechnungsauswahlButtonGroupSelectionChanged, true);
+            app.UmrechnungsauswahlButtonGroup.Title = 'Umrechnungsauswahl';
+            app.UmrechnungsauswahlButtonGroup.FontWeight = 'bold';
+            app.UmrechnungsauswahlButtonGroup.Position = [2 711 143 65];
+
+            % Create RealwertzuMFCWertButton
+            app.RealwertzuMFCWertButton = uitogglebutton(app.UmrechnungsauswahlButtonGroup);
+            app.RealwertzuMFCWertButton.Text = 'Realwert zu MFC-Wert';
+            app.RealwertzuMFCWertButton.Position = [2 22 137 23];
+            app.RealwertzuMFCWertButton.Value = true;
+
+            % Create MFCWertzuRealwertButton
+            app.MFCWertzuRealwertButton = uitogglebutton(app.UmrechnungsauswahlButtonGroup);
+            app.MFCWertzuRealwertButton.Text = 'MFC-Wert zu Realwert';
+            app.MFCWertzuRealwertButton.Position = [1 1 137 23];
+
+            % Create CH4SpinnerLabel
+            app.CH4SpinnerLabel = uilabel(app.UIFigure);
+            app.CH4SpinnerLabel.Tag = 'CH4Label';
+            app.CH4SpinnerLabel.HorizontalAlignment = 'right';
+            app.CH4SpinnerLabel.Position = [177 732 29 22];
+            app.CH4SpinnerLabel.Text = 'CH4';
+
+            % Create CH4Spinner
+            app.CH4Spinner = uispinner(app.UIFigure);
+            app.CH4Spinner.Step = 0.1;
+            app.CH4Spinner.Limits = [-1 Inf];
+            app.CH4Spinner.ValueDisplayFormat = '%11.4g l/min';
+            app.CH4Spinner.ValueChangedFcn = createCallbackFcn(app, @CH4SpinnerValueChanged, true);
+            app.CH4Spinner.Tooltip = {'Maximal realisierbarer Volumenstrom von 0,33 l '};
+            app.CH4Spinner.Position = [221 732 100 22];
+
+            % Create H2SpinnerLabel
+            app.H2SpinnerLabel = uilabel(app.UIFigure);
+            app.H2SpinnerLabel.HorizontalAlignment = 'right';
+            app.H2SpinnerLabel.Position = [181 691 25 22];
+            app.H2SpinnerLabel.Text = 'H2';
+
+            % Create H2Spinner
+            app.H2Spinner = uispinner(app.UIFigure);
+            app.H2Spinner.Step = 0.1;
+            app.H2Spinner.Limits = [-1 Inf];
+            app.H2Spinner.ValueDisplayFormat = '%11.4g l/min';
+            app.H2Spinner.ValueChangedFcn = createCallbackFcn(app, @H2SpinnerValueChanged, true);
+            app.H2Spinner.Tooltip = {'Kalibriert bis Volumenstrom von 2 l'};
+            app.H2Spinner.Position = [221 691 100 22];
+
+            % Create CH4_WertEditFieldLabel
+            app.CH4_WertEditFieldLabel = uilabel(app.UIFigure);
+            app.CH4_WertEditFieldLabel.HorizontalAlignment = 'right';
+            app.CH4_WertEditFieldLabel.Position = [367 733 61 22];
+            app.CH4_WertEditFieldLabel.Text = 'CH4_Wert';
+
+            % Create CH4_WertEditField
+            app.CH4_WertEditField = uieditfield(app.UIFigure, 'numeric');
+            app.CH4_WertEditField.Limits = [-1 Inf];
+            app.CH4_WertEditField.ValueDisplayFormat = '%11.4g l/min';
+            app.CH4_WertEditField.Editable = 'off';
+            app.CH4_WertEditField.Position = [443 733 100 22];
+
+            % Create H2_WertEditFieldLabel
+            app.H2_WertEditFieldLabel = uilabel(app.UIFigure);
+            app.H2_WertEditFieldLabel.HorizontalAlignment = 'right';
+            app.H2_WertEditFieldLabel.Position = [376 691 52 22];
+            app.H2_WertEditFieldLabel.Text = 'H2_Wert';
+
+            % Create H2_WertEditField
+            app.H2_WertEditField = uieditfield(app.UIFigure, 'numeric');
+            app.H2_WertEditField.Limits = [-1 Inf];
+            app.H2_WertEditField.ValueDisplayFormat = '%11.4g l/min';
+            app.H2_WertEditField.Editable = 'off';
+            app.H2_WertEditField.Position = [443 691 100 22];
+
+            % Create PhiEditFieldLabel
+            app.PhiEditFieldLabel = uilabel(app.UIFigure);
+            app.PhiEditFieldLabel.HorizontalAlignment = 'right';
+            app.PhiEditFieldLabel.Position = [318 413 25 22];
+            app.PhiEditFieldLabel.Text = 'Phi';
+
+            % Create PhiEditField
+            app.PhiEditField = uieditfield(app.UIFigure, 'numeric');
+            app.PhiEditField.Limits = [-1 Inf];
+            app.PhiEditField.ValueChangedFcn = createCallbackFcn(app, @PhiEditFieldValueChanged, true);
+            app.PhiEditField.Editable = 'off';
+            app.PhiEditField.Position = [358 413 100 22];
+
+            % Create EingabeLabel
+            app.EingabeLabel = uilabel(app.UIFigure);
+            app.EingabeLabel.Tag = 'Eingabe';
+            app.EingabeLabel.Position = [244 766 49 22];
+            app.EingabeLabel.Text = 'Eingabe';
+
+            % Create AusgabeLabel
+            app.AusgabeLabel = uilabel(app.UIFigure);
+            app.AusgabeLabel.Tag = 'Ausgabe';
+            app.AusgabeLabel.Position = [476 766 52 22];
+            app.AusgabeLabel.Text = 'Ausgabe';
+
+            % Create RealbedingungswerteLabel
+            app.RealbedingungswerteLabel = uilabel(app.UIFigure);
+            app.RealbedingungswerteLabel.FontWeight = 'bold';
+            app.RealbedingungswerteLabel.Position = [15 453 134 22];
+            app.RealbedingungswerteLabel.Text = 'Realbedingungswerte:';
+
+            % Create BerechnenButton
+            app.BerechnenButton = uibutton(app.UIFigure, 'push');
+            app.BerechnenButton.ButtonPushedFcn = createCallbackFcn(app, @BerechnenButtonPushed, true);
+            app.BerechnenButton.Position = [880 413 100 23];
+            app.BerechnenButton.Text = 'Berechnen';
+
+            % Create VorgabemodusVolumenCheckBox
+            app.VorgabemodusVolumenCheckBox = uicheckbox(app.UIFigure);
+            app.VorgabemodusVolumenCheckBox.ValueChangedFcn = createCallbackFcn(app, @VorgabemodusVolumenCheckBoxValueChanged, true);
+            app.VorgabemodusVolumenCheckBox.Text = 'Vorgabemodus Volumen';
+            app.VorgabemodusVolumenCheckBox.Position = [17 585 153 22];
+
+            % Create V_gesEditFieldLabel
+            app.V_gesEditFieldLabel = uilabel(app.UIFigure);
+            app.V_gesEditFieldLabel.HorizontalAlignment = 'right';
+            app.V_gesEditFieldLabel.Visible = 'off';
+            app.V_gesEditFieldLabel.Position = [13 545 39 22];
+            app.V_gesEditFieldLabel.Text = 'V_ges';
+
+            % Create V_gesEditField
+            app.V_gesEditField = uieditfield(app.UIFigure, 'numeric');
+            app.V_gesEditField.ValueDisplayFormat = '%11.4g l/min';
+            app.V_gesEditField.Editable = 'off';
+            app.V_gesEditField.Enable = 'off';
+            app.V_gesEditField.Visible = 'off';
+            app.V_gesEditField.Position = [67 545 100 22];
+
+            % Create Phi_VorgabeEditFieldLabel
+            app.Phi_VorgabeEditFieldLabel = uilabel(app.UIFigure);
+            app.Phi_VorgabeEditFieldLabel.HorizontalAlignment = 'right';
+            app.Phi_VorgabeEditFieldLabel.Visible = 'off';
+            app.Phi_VorgabeEditFieldLabel.Position = [198 545 74 22];
+            app.Phi_VorgabeEditFieldLabel.Text = 'Phi_Vorgabe';
+
+            % Create Phi_VorgabeEditField
+            app.Phi_VorgabeEditField = uieditfield(app.UIFigure, 'numeric');
+            app.Phi_VorgabeEditField.Editable = 'off';
+            app.Phi_VorgabeEditField.Enable = 'off';
+            app.Phi_VorgabeEditField.Visible = 'off';
+            app.Phi_VorgabeEditField.Position = [287 545 100 22];
+
+            % Create MFCbergabeButton
+            app.MFCbergabeButton = uibutton(app.UIFigure, 'push');
+            app.MFCbergabeButton.ButtonPushedFcn = createCallbackFcn(app, @MFCbergabeButtonPushed, true);
+            app.MFCbergabeButton.Position = [880 180 100 23];
+            app.MFCbergabeButton.Text = 'MFC Übergabe';
+
+            % Create LeistungEditField_2Label
+            app.LeistungEditField_2Label = uilabel(app.UIFigure);
+            app.LeistungEditField_2Label.Tag = 'LeistungVorgabe';
+            app.LeistungEditField_2Label.HorizontalAlignment = 'right';
+            app.LeistungEditField_2Label.Visible = 'off';
+            app.LeistungEditField_2Label.Position = [187 505 50 22];
+            app.LeistungEditField_2Label.Text = 'Leistung';
+
+            % Create LeistungVorgabe
+            app.LeistungVorgabe = uieditfield(app.UIFigure, 'numeric');
+            app.LeistungVorgabe.ValueDisplayFormat = '%11.4g W';
+            app.LeistungVorgabe.Editable = 'off';
+            app.LeistungVorgabe.Visible = 'off';
+            app.LeistungVorgabe.Position = [252 505 100 22];
+
+            % Create VorgabemodusLeistungCheckBox
+            app.VorgabemodusLeistungCheckBox = uicheckbox(app.UIFigure);
+            app.VorgabemodusLeistungCheckBox.ValueChangedFcn = createCallbackFcn(app, @VorgabemodusLeistungCheckBoxValueChanged, true);
+            app.VorgabemodusLeistungCheckBox.Text = 'Vorgabemodus Leistung';
+            app.VorgabemodusLeistungCheckBox.Position = [202 585 151 22];
+
+            % Create LeistungEditFieldLabel
+            app.LeistungEditFieldLabel = uilabel(app.UIFigure);
+            app.LeistungEditFieldLabel.HorizontalAlignment = 'right';
+            app.LeistungEditFieldLabel.Position = [495 413 50 22];
+            app.LeistungEditFieldLabel.Text = 'Leistung';
+
+            % Create LeistungEditField
+            app.LeistungEditField = uieditfield(app.UIFigure, 'numeric');
+            app.LeistungEditField.Limits = [0 Inf];
+            app.LeistungEditField.ValueDisplayFormat = '%11.4g W';
+            app.LeistungEditField.ValueChangedFcn = createCallbackFcn(app, @LeistungEditFieldValueChanged, true);
+            app.LeistungEditField.Editable = 'off';
+            app.LeistungEditField.Position = [560 413 100 22];
+
+            % Create MFCPanel
+            app.MFCPanel = uipanel(app.UIFigure);
+            app.MFCPanel.TitlePosition = 'centertop';
+            app.MFCPanel.Title = 'MFC Schnittstelle';
+            app.MFCPanel.Position = [35 31 617 344];
+
+            % Create bergebeneSollpositionenTextAreaLabel
+            app.bergebeneSollpositionenTextAreaLabel = uilabel(app.MFCPanel);
+            app.bergebeneSollpositionenTextAreaLabel.HorizontalAlignment = 'center';
+            app.bergebeneSollpositionenTextAreaLabel.FontWeight = 'bold';
+            app.bergebeneSollpositionenTextAreaLabel.Position = [84 293 160 22];
+            app.bergebeneSollpositionenTextAreaLabel.Text = 'Übergebene Sollpositionen';
+
+            % Create bergebeneSollpositionenTextArea
+            app.bergebeneSollpositionenTextArea = uitextarea(app.MFCPanel);
+            app.bergebeneSollpositionenTextArea.Editable = 'off';
+            app.bergebeneSollpositionenTextArea.WordWrap = 'off';
+            app.bergebeneSollpositionenTextArea.Position = [15 165 311 119];
+
+            % Create GemessenerDurchflussTextAreaLabel
+            app.GemessenerDurchflussTextAreaLabel = uilabel(app.MFCPanel);
+            app.GemessenerDurchflussTextAreaLabel.HorizontalAlignment = 'center';
+            app.GemessenerDurchflussTextAreaLabel.FontWeight = 'bold';
+            app.GemessenerDurchflussTextAreaLabel.Position = [95 137 143 22];
+            app.GemessenerDurchflussTextAreaLabel.Text = 'Gemessener Durchfluss';
+
+            % Create GemessenerDurchflussTextArea
+            app.GemessenerDurchflussTextArea = uitextarea(app.MFCPanel);
+            app.GemessenerDurchflussTextArea.Editable = 'off';
+            app.GemessenerDurchflussTextArea.WordWrap = 'off';
+            app.GemessenerDurchflussTextArea.Position = [17 9 311 119];
+
+            % Create MesswertCoriFlowEditFieldLabel
+            app.MesswertCoriFlowEditFieldLabel = uilabel(app.MFCPanel);
+            app.MesswertCoriFlowEditFieldLabel.HorizontalAlignment = 'center';
+            app.MesswertCoriFlowEditFieldLabel.FontWeight = 'bold';
+            app.MesswertCoriFlowEditFieldLabel.Position = [486 283 118 22];
+            app.MesswertCoriFlowEditFieldLabel.Text = 'Messwert Cori-Flow';
+
+            % Create MesswertCoriFlowEditField
+            app.MesswertCoriFlowEditField = uieditfield(app.MFCPanel, 'text');
+            app.MesswertCoriFlowEditField.ValueChangedFcn = createCallbackFcn(app, @MesswertCoriFlowEditFieldValueChanged, true);
+            app.MesswertCoriFlowEditField.Editable = 'off';
+            app.MesswertCoriFlowEditField.Position = [495 262 100 22];
+
+            % Create MFCRckmeldungTextAreaLabel
+            app.MFCRckmeldungTextAreaLabel = uilabel(app.MFCPanel);
+            app.MFCRckmeldungTextAreaLabel.HorizontalAlignment = 'right';
+            app.MFCRckmeldungTextAreaLabel.Position = [425 192 108 22];
+            app.MFCRckmeldungTextAreaLabel.Text = 'MFC Rückmeldung';
+
+            % Create MFCRckmeldungTextArea
+            app.MFCRckmeldungTextArea = uitextarea(app.MFCPanel);
+            app.MFCRckmeldungTextArea.WordWrap = 'off';
+            app.MFCRckmeldungTextArea.Position = [360 79 236 114];
+
+            % Create MFCDisconnectButton
+            app.MFCDisconnectButton = uibutton(app.UIFigure, 'push');
+            app.MFCDisconnectButton.ButtonPushedFcn = createCallbackFcn(app, @MFCDisconnectButtonPushed, true);
+            app.MFCDisconnectButton.Interruptible = 'off';
+            app.MFCDisconnectButton.Position = [877 31 104 23];
+            app.MFCDisconnectButton.Text = 'MFC Disconnect';
+
+            % Create CoriFlowMessungButton
+            app.CoriFlowMessungButton = uibutton(app.UIFigure, 'push');
+            app.CoriFlowMessungButton.ButtonPushedFcn = createCallbackFcn(app, @CoriFlowMessungButtonPushed, true);
+            app.CoriFlowMessungButton.Interruptible = 'off';
+            app.CoriFlowMessungButton.Position = [870 132 119 23];
+            app.CoriFlowMessungButton.Text = 'Cori-Flow-Messung';
+
+            % Create MFCConnectButton
+            app.MFCConnectButton = uibutton(app.UIFigure, 'push');
+            app.MFCConnectButton.ButtonPushedFcn = createCallbackFcn(app, @MFCConnectButtonPushed, true);
+            app.MFCConnectButton.Interruptible = 'off';
+            app.MFCConnectButton.Position = [880 261 100 23];
+            app.MFCConnectButton.Text = 'MFC Connect';
+
+            % Create FlammeauspustenButton
+            app.FlammeauspustenButton = uibutton(app.UIFigure, 'push');
+            app.FlammeauspustenButton.ButtonPushedFcn = createCallbackFcn(app, @FlammeauspustenButtonPushed, true);
+            app.FlammeauspustenButton.Position = [870 566 120 23];
+            app.FlammeauspustenButton.Text = 'Flamme auspusten!';
+
+            % Create AirSpinnerLabel
+            app.AirSpinnerLabel = uilabel(app.UIFigure);
+            app.AirSpinnerLabel.HorizontalAlignment = 'right';
+            app.AirSpinnerLabel.Position = [181 651 25 22];
+            app.AirSpinnerLabel.Text = 'Air';
+
+            % Create AirSpinner
+            app.AirSpinner = uispinner(app.UIFigure);
+            app.AirSpinner.Step = 0.1;
+            app.AirSpinner.Limits = [-1 Inf];
+            app.AirSpinner.ValueDisplayFormat = '%11.4g l/min';
+            app.AirSpinner.ValueChangedFcn = createCallbackFcn(app, @AirSpinnerValueChanged, true);
+            app.AirSpinner.Position = [221 651 100 22];
+
+            % Create AirWertEditFieldLabel
+            app.AirWertEditFieldLabel = uilabel(app.UIFigure);
+            app.AirWertEditFieldLabel.HorizontalAlignment = 'right';
+            app.AirWertEditFieldLabel.Position = [379 651 49 22];
+            app.AirWertEditFieldLabel.Text = 'Air-Wert';
+
+            % Create AirWertEditField
+            app.AirWertEditField = uieditfield(app.UIFigure, 'numeric');
+            app.AirWertEditField.Limits = [-1 Inf];
+            app.AirWertEditField.ValueDisplayFormat = '%11.4g l/min';
+            app.AirWertEditField.Editable = 'off';
+            app.AirWertEditField.Position = [443 651 100 22];
+
+            % Create MFCsCheckenButton
+            app.MFCsCheckenButton = uibutton(app.UIFigure, 'push');
+            app.MFCsCheckenButton.ButtonPushedFcn = createCallbackFcn(app, @MFCsCheckenButtonPushed, true);
+            app.MFCsCheckenButton.Position = [880 223 100 23];
+            app.MFCsCheckenButton.Text = 'MFCs Checken';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = Flammenrechner_H2_Air_CH4AlexsVersion
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
