@@ -246,11 +246,12 @@ class ConnectionManager:
                 error_msg = str(e).split('\n')[0]  # Get first line only
                 logger.warning(f"{port_info.device}: {error_msg}")
                 errors.append((port_info.device, error_msg))
-                continue
             except Exception as e:
                 logger.debug(f"Could not scan {port_info.device}: {e}")
                 errors.append((port_info.device, str(e)))
-                continue
+            finally:
+                # IMPORTANT: Close the port after checking to prevent "access denied" on subsequent ports
+                self.close_port(port_info.device)
 
         if not results:
             if errors:
