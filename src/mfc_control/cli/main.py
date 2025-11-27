@@ -281,10 +281,11 @@ def run_interactive(controller: MFCController) -> None:
                 else:
                     try:
                         print("  Scanning all COM ports for MFC devices...")
+                        print("  (Check log messages above for port-specific errors)\n")
                         results = controller._connection_manager.discover_all_ports()
 
                         if results:
-                            print(f"\n  Found devices on {len(results)} port(s):\n")
+                            print(f"\n  ✓ Found devices on {len(results)} port(s):\n")
                             for port, devices in results.items():
                                 print(f"  {port}:")
                                 for dev in devices:
@@ -292,7 +293,13 @@ def run_interactive(controller: MFCController) -> None:
                             print(f"\n  Use 'add <name> <node> <gas>' to add devices")
                             print(f"  Or use 'autosetup' for interactive configuration")
                         else:
-                            print("  No MFC devices found on any port")
+                            print("\n  ✗ No MFC devices found on any port")
+                            print("\n  Troubleshooting:")
+                            print("    1. Check that devices are powered on")
+                            print("    2. Close other programs using the ports (Device Manager, serial terminals)")
+                            print("    3. Try unplugging and replugging USB connections")
+                            print("    4. Check Windows Device Manager for port issues")
+                            print("    5. Verify the device is a Bronkhorst MFC with FLOW-BUS protocol")
                     except Exception as e:
                         print(f"  Error during scan: {e}")
 

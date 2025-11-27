@@ -232,6 +232,7 @@ class ConnectionManager:
         logger.info(f"Scanning {len(available_ports)} available port(s) for MFC devices...")
 
         results = {}
+        errors = []
         for port_info in available_ports:
             try:
                 logger.debug(f"Checking {port_info.device}...")
@@ -239,12 +240,24 @@ class ConnectionManager:
                 if devices:
                     results[port_info.device] = devices
                     logger.info(f"{port_info.device}: Found {len(devices)} device(s)")
+                else:
+                    logger.debug(f"{port_info.device}: No devices found")
+            except ConnectionError as e:
+                # Connection errors indicate port access issues
+                error_msg = str(e).split('\n')[0]  # Get first line only
+                logger.warning(f"{port_info.device}: {error_msg}")
+                errors.append((port_info.device, error_msg))
+                continue
             except Exception as e:
                 logger.debug(f"Could not scan {port_info.device}: {e}")
+                errors.append((port_info.device, str(e)))
                 continue
 
         if not results:
-            logger.warning("No MFC devices found on any port")
+            if errors:
+                logger.warning(f"No MFC devices found. {len(errors)} port(s) had access errors")
+            else:
+                logger.warning("No MFC devices found on any port")
         else:
             total_devices = sum(len(devs) for devs in results.values())
             logger.info(f"Discovery complete: {total_devices} device(s) on {len(results)} port(s)")
