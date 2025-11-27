@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def test_raw_communication(com_port: str, node_address: int, baudrate: int = 38400) -> dict[str, Any]:
     """
-    Test raw communication with a device at various levels.
+    Test raw communication with a device using high-level instrument API.
 
     Returns diagnostic information about what's working and what's not.
     """
@@ -22,8 +22,7 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         'node': node_address,
         'baudrate': baudrate,
         'port_opens': False,
-        'master_starts': False,
-        'node_responds': False,
+        'instrument_created': False,
         'can_read_params': False,
         'errors': [],
         'data': {}
@@ -92,6 +91,7 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
             except Exception as e:
                 logger.debug(f"Error during cleanup: {e}")
 
+    return results
 
 def test_multiple_baudrates(com_port: str, node_address: int) -> dict[int, dict]:
     """
@@ -113,7 +113,6 @@ def test_multiple_baudrates(com_port: str, node_address: int) -> dict[int, dict]
             logger.info(f"✓✓✓ SUCCESS at {baud} baud! ✓✓✓")
             return results  # Found working baud rate
 
-    return results
 
 
 def print_diagnostic_summary(results: dict[str, Any]) -> None:
@@ -125,18 +124,13 @@ def print_diagnostic_summary(results: dict[str, Any]) -> None:
     # Status checks
     checks = [
         ("Port Opens", results['port_opens']),
-        ("Master Starts", results['master_starts']),
-        ("Node Responds", results['node_responds']),
+        ("Instrument Created", results['instrument_created']),
         ("Can Read Parameters", results['can_read_params']),
     ]
 
     for name, status in checks:
         symbol = "✓" if status else "✗"
         print(f"{symbol} {name}")
-
-    # Found nodes
-    if 'found_nodes' in results['data']:
-        print(f"\nNodes found: {results['data']['found_nodes']}")
 
     # Parameters
     if 'parameters' in results['data']:
@@ -159,23 +153,14 @@ def diagnose_connection_issue(com_port: str, node_address: int = 1) -> str:
     """
     print(f"\nRunning diagnostics on {com_port}:{node_address}...\n")
 
-    # First try default baudrate
-    result = test_raw_communication(com_port, node_address)
+    # Test at 38400 baud (standard for Bronkhorst)
+    result = test_raw_communication(com_port, node_address, baudrate=38400)
     print_diagnostic_summary(result)
 
     if result['can_read_params']:
         return f"SUCCESS! Device is responding correctly at {result['baudrate']} baud."
 
-    # If that didn't work, try other baud rates
-    if result['port_opens'] and result['master_starts']:
-        print("\nTrying different baud rates...")
-        baud_results = test_multiple_baudrates(com_port, node_address)
-
-        for baud, res in baud_results.items():
-            if res['can_read_params']:
-                return f"SUCCESS! Device responds at {baud} baud (not default {result['baudrate']}).\nUse: mfc-cli --baudrate {baud}"
-
-    # Generate recommendation
+    # Generate recommendation based on failure point
     if not result['port_opens']:
         return "PROBLEM: Cannot open port. Check Device Manager, close other programs using port."
     elif not result['master_starts']:
@@ -190,4 +175,4 @@ def diagnose_connection_issue(com_port: str, node_address: int = 1) -> str:
         else:
             return f"PROBLEM: Target node {node_address} not found, but scan saw no other nodes either."
     else:
-        return "PROBLEM: Nodes found but parameters return None. Check: baud rate, FLOW-BUS protocol, firmware."
+        return "PROBLEM: Unknown issue. Check hardware connections and power."
