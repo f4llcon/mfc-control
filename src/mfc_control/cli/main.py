@@ -281,11 +281,13 @@ def run_interactive(controller: MFCController) -> None:
                 if controller.use_mock:
                     print("  Error: Cannot scan ports in mock mode")
                 else:
+                    scanned_port = None
                     try:
                         # Check if specific port was provided
                         if len(args) > 0:
                             # Scan specific port
                             specific_port = args[0]
+                            scanned_port = specific_port
                             print(f"  Scanning {specific_port} for MFC devices...\n")
                             devices = controller._connection_manager.discover_devices(specific_port)
 
@@ -325,6 +327,13 @@ def run_interactive(controller: MFCController) -> None:
                                 print("    5. Verify the device is a Bronkhorst MFC with FLOW-BUS protocol")
                     except Exception as e:
                         print(f"  Error during scan: {e}")
+                    finally:
+                        # Close the scanned port(s) since we're only scanning, not adding devices
+                        if scanned_port:
+                            controller._connection_manager.close_port(scanned_port)
+                        else:
+                            # Scan all closed all ports, so close all connections
+                            controller._connection_manager.close_all()
 
             elif cmd == "autosetup":
                 if controller.use_mock:
