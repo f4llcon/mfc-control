@@ -55,8 +55,9 @@ Available Commands:
   list                   List all registered MFCs
 
   ports                  List all available COM ports on system
-  scan                   Scan ALL ports for MFC devices
-  discover               Scan specific port for devices (uses --port)
+  scan [port]            Scan for MFC devices (all ports or specific port, e.g., scan COM6)
+  discover               Scan specific port for devices (uses --port from startup)
+  diagnose <port> [node] Deep diagnostic test (e.g., diagnose COM6 1)
   autosetup              Auto-discover and interactively add devices
 
   read <name>            Read current flow from MFC
@@ -280,19 +281,47 @@ def run_interactive(controller: MFCController) -> None:
                     print("  Error: Cannot scan ports in mock mode")
                 else:
                     try:
-                        print("  Scanning all COM ports for MFC devices...")
-                        results = controller._connection_manager.discover_all_ports()
+                        # Check if specific port was provided
+                        if len(args) > 0:
+                            # Scan specific port
+                            specific_port = args[0]
+                            print(f"  Scanning {specific_port} for MFC devices...\n")
+                            devices = controller._connection_manager.discover_devices(specific_port)
 
-                        if results:
-                            print(f"\n  Found devices on {len(results)} port(s):\n")
-                            for port, devices in results.items():
-                                print(f"  {port}:")
+                            if devices:
+                                print(f"  ✓ Found {len(devices)} device(s) on {specific_port}:\n")
                                 for dev in devices:
                                     print(f"    - Node {dev.address:3d}: {dev.device_type} (S/N: {dev.serial})")
-                            print(f"\n  Use 'add <name> <node> <gas>' to add devices")
-                            print(f"  Or use 'autosetup' for interactive configuration")
+                                print(f"\n  Use 'add <name> {dev.address} <gas>' to add devices")
+                            else:
+                                print(f"  ✗ No MFC devices found on {specific_port}")
+                                print("\n  Troubleshooting:")
+                                print("    1. Check that devices are powered on")
+                                print("    2. Verify correct baud rate (default: 38400)")
+                                print("    3. Check physical connections")
+                                print("    4. Try a different port with 'ports' command")
                         else:
-                            print("  No MFC devices found on any port")
+                            # Scan all ports
+                            print("  Scanning all COM ports for MFC devices...")
+                            print("  (Check log messages above for port-specific errors)\n")
+                            results = controller._connection_manager.discover_all_ports()
+
+                            if results:
+                                print(f"\n  ✓ Found devices on {len(results)} port(s):\n")
+                                for port, devices in results.items():
+                                    print(f"  {port}:")
+                                    for dev in devices:
+                                        print(f"    - Node {dev.address:3d}: {dev.device_type} (S/N: {dev.serial})")
+                                print(f"\n  Use 'add <name> <node> <gas>' to add devices")
+                                print(f"  Or use 'autosetup' for interactive configuration")
+                            else:
+                                print("\n  ✗ No MFC devices found on any port")
+                                print("\n  Troubleshooting:")
+                                print("    1. Check that devices are powered on")
+                                print("    2. Close other programs using the ports (Device Manager, serial terminals)")
+                                print("    3. Try unplugging and replugging USB connections")
+                                print("    4. Check Windows Device Manager for port issues")
+                                print("    5. Verify the device is a Bronkhorst MFC with FLOW-BUS protocol")
                     except Exception as e:
                         print(f"  Error during scan: {e}")
 
@@ -354,7 +383,25 @@ def run_interactive(controller: MFCController) -> None:
                             print("  No devices found")
                     except Exception as e:
                         print(f"  Error: {e}")
-            
+
+            elif cmd == "diagnose":
+                if controller.use_mock:
+                    print("  Error: Cannot diagnose in mock mode")
+                elif len(args) < 1:
+                    print("  Usage: diagnose <port> [node_address]")
+                    print("  Example: diagnose COM6 1")
+                else:
+                    try:
+                        from mfc_control.cli.diagnostics import diagnose_connection_issue
+                        port = args[0]
+                        node = int(args[1]) if len(args) > 1 else 1
+
+                        recommendation = diagnose_connection_issue(port, node)
+                        print(f"\n{recommendation}\n")
+                    except Exception as e:
+                        print(f"  Error during diagnostics: {e}")
+                        logger.exception("Diagnostic error")
+
             # ─────────────────────────────────────────────────────────────
             # Dynamic MFC management
             # ─────────────────────────────────────────────────────────────

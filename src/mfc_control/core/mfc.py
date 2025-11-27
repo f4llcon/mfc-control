@@ -119,11 +119,19 @@ class FlowDeviceBase(ABC):
         inst = self._require_connection()
         tag = inst.readParameter(MFCParameter.DEVICE_TAG)
         return str(tag) if tag else ""
-    
+
     def read_capacity(self) -> float:
-        """Read the device's maximum flow capacity."""
+        """
+        Read the device's maximum flow capacity.
+
+        Raises:
+            ValueError: If device returns invalid data
+        """
         inst = self._require_connection()
-        return float(inst.readParameter(MFCParameter.CAPACITY))
+        value = inst.readParameter(MFCParameter.CAPACITY)
+        if value is None:
+            raise ValueError(f"{self.name}: Device returned no capacity data")
+        return float(value)
     
     def wink(self, mode: str = WinkMode.LONG) -> None:
         """
@@ -176,12 +184,17 @@ class MFC(FlowDeviceBase):
     def read_flow_mfc(self) -> float:
         """
         Read measured flow in MFC units (raw device reading).
-        
+
         Returns:
             Flow rate as displayed by MFC (l/min in MFC units)
+
+        Raises:
+            ValueError: If device returns invalid data
         """
         inst = self._require_connection()
         value = inst.readParameter(MFCParameter.MEASURE)
+        if value is None:
+            raise ValueError(f"{self.name}: Device returned no data (check communication)")
         return float(value)
     
     def read_flow_real(self) -> float:
@@ -202,12 +215,17 @@ class MFC(FlowDeviceBase):
     def read_setpoint_mfc(self) -> float:
         """
         Read current setpoint in MFC units.
-        
+
         Returns:
             Setpoint as understood by MFC (l/min in MFC units)
+
+        Raises:
+            ValueError: If device returns invalid data
         """
         inst = self._require_connection()
         value = inst.readParameter(MFCParameter.SETPOINT)
+        if value is None:
+            raise ValueError(f"{self.name}: Device returned no data (check communication)")
         return float(value)
     
     def read_setpoint_real(self) -> float:
@@ -341,12 +359,17 @@ class CoriFlowMeter(FlowDeviceBase):
     def read_flow_mfc(self) -> float:
         """
         Read measured flow from Cori-Flow meter.
-        
+
         Returns:
             Flow rate (l/min or as configured on device)
+
+        Raises:
+            ValueError: If device returns invalid data
         """
         inst = self._require_connection()
         value = inst.readParameter(MFCParameter.MEASURE)
+        if value is None:
+            raise ValueError(f"{self.name}: Device returned no data (check communication)")
         return float(value)
     
     # CoriFlowMeter has no calibration - it measures true mass flow
