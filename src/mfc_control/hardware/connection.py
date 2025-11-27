@@ -295,6 +295,26 @@ class ConnectionManager:
         
         return self._instruments[key]
     
+    def close_port(self, com_port: str) -> None:
+        """
+        Close connection to a specific port.
+
+        Args:
+            com_port: Port to close (e.g., "COM6")
+        """
+        if com_port in self._masters:
+            try:
+                self._masters[com_port].stop()
+                logger.debug(f"Closed connection to {com_port}")
+                del self._masters[com_port]
+            except Exception as e:
+                logger.error(f"Error closing {com_port}: {e}")
+
+        # Also remove any instruments on this port
+        instruments_to_remove = [key for key in self._instruments if key.startswith(f"{com_port}:")]
+        for key in instruments_to_remove:
+            del self._instruments[key]
+
     def close_all(self) -> None:
         """Close all connections."""
         for com_port, master in self._masters.items():
@@ -303,7 +323,7 @@ class ConnectionManager:
                 logger.info(f"Closed connection to {com_port}")
             except Exception as e:
                 logger.error(f"Error closing {com_port}: {e}")
-        
+
         self._masters.clear()
         self._instruments.clear()
     
