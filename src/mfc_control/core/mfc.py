@@ -105,9 +105,9 @@ class FlowDeviceBase(ABC):
     
     def _require_connection(self) -> InstrumentProtocol:
         """Get instrument, raising error if not connected."""
-        if not self.is_connected or self.instrument is None:
+        if not self.is_connected:
             raise ConnectionError(f"{self.name} is not connected")
-        return self.instrument
+        return self.instrument  # type: ignore[return-value]
     
     @abstractmethod
     def read_flow_mfc(self) -> float:

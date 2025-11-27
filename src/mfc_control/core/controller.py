@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Any
 
 from mfc_control.core.calibration import Calibration, get_default_calibration
 from mfc_control.core.mfc import MFC, CoriFlowMeter, FlowDeviceBase
@@ -59,7 +59,8 @@ class MFCController:
     use_mock: bool = False
     _mfcs: dict[str, MFC] = field(default_factory=dict, repr=False)
     _cori_flows: dict[str, CoriFlowMeter] = field(default_factory=dict, repr=False)
-    _connection_manager: any = field(default=None, repr=False)
+    _connection_manager: Any = field(default=None, repr=False)
+    _discovery_port: str | None = field(default=None, repr=False)
     safety: SafetyManager = field(init=False, repr=False)
     
     def __post_init__(self) -> None:
@@ -311,7 +312,11 @@ class MFCController:
     def mfcs(self) -> Iterator[MFC]:
         """Iterate over all MFCs."""
         return iter(self._mfcs.values())
-    
+
+    def mfc_items(self) -> Iterator[tuple[str, MFC]]:
+        """Iterate over all MFC name-value pairs."""
+        return iter(self._mfcs.items())
+
     @property
     def all_devices(self) -> Iterator[FlowDeviceBase]:
         """Iterate over all devices (MFCs and CoriFlows)."""

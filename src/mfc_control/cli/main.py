@@ -297,7 +297,7 @@ def run_interactive(controller: MFCController) -> None:
                                 print(f"  ✓ Found {len(devices)} device(s) on {specific_port}:\n")
                                 for dev in devices:
                                     print(f"    - Node {dev.address:3d}: {dev.device_type} (S/N: {dev.serial})")
-                                print(f"\n  Use 'add <name> {dev.address} <gas>' to add devices")
+                                print(f"\n  Use 'add <name> <node_address> <gas>' to add devices")
                             else:
                                 print(f"  ✗ No MFC devices found on {specific_port}")
                                 print("\n  Troubleshooting:")
@@ -332,10 +332,16 @@ def run_interactive(controller: MFCController) -> None:
                     finally:
                         # Close the scanned port(s) since we're only scanning, not adding devices
                         if scanned_port:
-                            controller._connection_manager.close_port(scanned_port)
+                            try:
+                                controller._connection_manager.close_port(scanned_port)
+                            except Exception as e:
+                                logger.debug(f"Error closing port {scanned_port}: {e}")
                         else:
-                            # Scan all closed all ports, so close all connections
-                            controller._connection_manager.close_all()
+                            # Scanned all ports, so close all connections
+                            try:
+                                controller._connection_manager.close_all()
+                            except Exception as e:
+                                logger.debug(f"Error closing ports: {e}")
 
             elif cmd == "autosetup":
                 if controller.use_mock:
