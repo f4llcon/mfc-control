@@ -35,83 +35,59 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         return results
 
     instrument = None
-    # -------------------------------------------------------------
-    # 1. Main TRY block for all operations that use 'master'
-    # -------------------------------------------------------------
     try:
-        # Step 1 & 2: Open Port, Create Master, and Start (Handled by instrument constructor)
+        # Step 1: Create instrument (this opens port and initializes connection)
         logger.info(f"Opening connection to {com_port} at {baudrate} baud...")
         instrument = propar.instrument(com_port, address=node_address, baudrate=baudrate)
-
-        # If the line above succeeds, the port is open and master has started.
         results['port_opens'] = True
-        results['master_starts'] = True 
-        logger.info(f"✓ Port {com_port} opened and Master started successfully")
+        results['instrument_created'] = True
+        logger.info(f"✓ Instrument created for node {node_address} on {com_port}")
 
-        # Step 3: Can we find nodes? (Use the instrument's master attribute)
-        try:
-            nodes = instrument.master.get_nodes(find_first=True)
-            # ... (rest of Step 3 logic to set results['node_responds'] and check address) ...
-            
-        except Exception as e:
-            results['errors'].append(f"Cannot scan for nodes: {e}")
-            logger.error(f"✗ Node scan failed: {e}")
+        # Step 2: Try to read parameters from the device
+        test_params = {
+            'capacity': 21,
+            'measure': 205,
+            'setpoint': 206,
+            'device_tag': 115,
+        }
 
-        # Step 4: Try to read parameters (Use the high-level instrument method)
-        if results['node_responds'] and node_address in results['data'].get('found_nodes', []):
+        results['data']['parameters'] = {}
+        params_read = 0
+
+        for name, param_num in test_params.items():
             try:
-                # Use the high-level readParameter method that avoids the 'Zugriff verweigert' error
-                test_params = {
-                    'capacity': 21,
-                    'measure': 205,
-                    'device_tag': 115,
-                }
-                
-                # Loop through test_params and use instrument.readParameter(param_num)
-                # ... (Parameter reading logic goes here) ...
-                
-                results['can_read_params'] = True
-                
+                value = instrument.readParameter(param_num)
+                results['data']['parameters'][name] = value
+                if value is not None:
+                    logger.info(f"✓ Read {name} (param {param_num}): {value}")
+                    params_read += 1
+                else:
+                    logger.warning(f"✗ Read {name} (param {param_num}): None (no response)")
             except Exception as e:
-                results['errors'].append(f"Cannot read parameters: {e}")
+                logger.error(f"✗ Failed to read {name}: {e}")
+                results['data']['parameters'][name] = f"ERROR: {e}"
+                results['errors'].append(f"Cannot read {name}: {e}")
 
-        return results
+        if params_read > 0:
+            results['can_read_params'] = True
 
     except Exception as e:
-        results['errors'].append(f"Fatal connection or initialization error: {e}")
-        return results
+        results['errors'].append(f"Cannot create instrument: {e}")
+        logger.error(f"✗ Failed to create instrument: {e}")
 
-    # The final cleanup block is now essential and simple.
     finally:
-        if instrument is not None and hasattr(instrument, 'master'):
+        # Cleanup - ALWAYS close the connection
+        if instrument is not None:
             try:
-                # Close the master (which was created implicitly by the instrument)
-                instrument.master.stop()
+                # Close the instrument connection
+                if hasattr(instrument, 'close'):
+                    instrument.close()
                 logger.debug(f"Closed connection to {com_port}")
             except Exception as e:
                 logger.debug(f"Error during cleanup: {e}")
 
     return results
 
-def test_multiple_baudrates(com_port: str, node_address: int) -> dict[int, dict]:
-    """
-    Test communication at different baud rates.
-
-    MFCs might be configured for different baud rates than default 38400.
-    """
-    baudrates = [38400]
-    results = {}
-
-    logger.info(f"Testing {com_port}:{node_address} at multiple baud rates...")
-
-    for baud in baudrates:
-        logger.info(f"\n--- Testing {baud} baud ---")
-        result = test_raw_communication(com_port, node_address, baudrate=baud)
-        results[baud] = result
-
-        if result['can_read_params']:
-            logger.info(f"✓✓✓ SUCCESS at {baud} baud! ✓✓✓")
-            return results  # Found working baud rate
 
 
 
@@ -163,16 +139,13 @@ def diagnose_connection_issue(com_port: str, node_address: int = 1) -> str:
     # Generate recommendation based on failure point
     if not result['port_opens']:
         return "PROBLEM: Cannot open port. Check Device Manager, close other programs using port."
-    elif not result['master_starts']:
-        return "PROBLEM: Port opens but master won't start. Check drivers/hardware."
-    elif not result['node_responds']:
-        return "PROBLEM: No nodes found on FLOW-BUS. Check: power, cables, termination resistors."
-    elif result['node_responds'] and node_address not in result['data'].get('found_nodes', []):
-        available = result['data'].get('found_nodes', [])
-        # --- NEW LOGIC HERE ---
-        if available:
-            return f"PROBLEM: Node {node_address} not found. Found nodes: {available}\nRECOMMENDATION: Use the correct node address! Try running the diagnosis with address {available[0]}."
-        else:
-            return f"PROBLEM: Target node {node_address} not found, but scan saw no other nodes either."
+    elif not result['instrument_created']:
+        return "PROBLEM: Port opens but instrument creation failed. Check drivers/hardware."
+    elif result['instrument_created'] and not result['can_read_params']:
+        return f"""PROBLEM: Instrument created but cannot read parameters. Possible causes:
+1. Wrong node address (tried {node_address}) - use 'scan {com_port}' to find available nodes
+2. Device not powered on
+3. FLOW-BUS wiring issue (check RX/TX, termination resistors)
+4. Device firmware not responding to FLOW-BUS protocol"""
     else:
         return "PROBLEM: Unknown issue. Check hardware connections and power."
