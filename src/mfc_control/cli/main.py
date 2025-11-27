@@ -330,14 +330,12 @@ def run_interactive(controller: MFCController) -> None:
                     except Exception as e:
                         print(f"  Error during scan: {e}")
                     finally:
-                        # Close the scanned port(s) since we're only scanning, not adding devices
                         if scanned_port:
                             try:
                                 controller._connection_manager.close_port(scanned_port)
                             except Exception as e:
                                 logger.debug(f"Error closing port {scanned_port}: {e}")
                         else:
-                            # Scanned all ports, so close all connections
                             try:
                                 controller._connection_manager.close_all()
                             except Exception as e:

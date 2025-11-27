@@ -259,7 +259,7 @@ class ConnectionManager:
                 logger.debug(f"Could not scan {port_info.device}: {e}")
                 errors.append((port_info.device, str(e)))
             finally:
-                # IMPORTANT: Close the port after checking to prevent "access denied" on subsequent ports
+                # Close port to prevent access errors on subsequent scans
                 self.close_port(port_info.device)
 
         if not results:
