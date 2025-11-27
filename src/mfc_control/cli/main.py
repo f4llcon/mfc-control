@@ -53,28 +53,32 @@ Available Commands:
 -------------------------------------------------------------------
   status                 Show status of all devices
   list                   List all registered MFCs
-  discover               Scan for devices on COM port (real HW only)
-  
+
+  ports                  List all available COM ports on system
+  scan                   Scan ALL ports for MFC devices
+  discover               Scan specific port for devices (uses --port)
+  autosetup              Auto-discover and interactively add devices
+
   read <name>            Read current flow from MFC
   set <name> <flow>      Set flow rate (real units, l/min)
   close <name>           Close valve (set flow to 0)
   closeall               Close all valves
-  
+
   add <name> <node> <gas>   Add MFC dynamically (e.g., add CH4 1 CH4)
   remove <name>          Remove MFC from controller
-  
+
   wink <name>            Make MFC blink its LED
   winkall                Make all devices blink
-  
+
   phi                    Calculate phi from current flows
   power                  Calculate power from current flows
-  
+
   volume <V> <phi>       Solve volume mode (H2-Air)
   pmode <P> <phi>        Solve power mode (H2-Air)
-  
+
   purge                  Execute purge sequence
   estop                  Emergency stop (close all immediately)
-  
+
   help                   Show this help
   quit / exit            Exit the program
 -------------------------------------------------------------------
@@ -252,7 +256,87 @@ def run_interactive(controller: MFCController) -> None:
             elif cmd == "list":
                 print(f"  MFCs: {', '.join(controller.list_mfcs()) or '(none)'}")
                 print(f"  CoriFlows: {', '.join(controller.list_cori_flows()) or '(none)'}")
-            
+
+            # ─────────────────────────────────────────────────────────────
+            # Discovery commands
+            # ─────────────────────────────────────────────────────────────
+            elif cmd == "ports":
+                try:
+                    from mfc_control.hardware.connection import list_available_ports
+                    ports = list_available_ports()
+                    if ports:
+                        print(f"  Available COM ports ({len(ports)}):")
+                        for port in ports:
+                            print(f"    {port}")
+                    else:
+                        print("  No COM ports found on system")
+                except ImportError as e:
+                    print(f"  Error: {e}")
+                except Exception as e:
+                    print(f"  Error listing ports: {e}")
+
+            elif cmd == "scan":
+                if controller.use_mock:
+                    print("  Error: Cannot scan ports in mock mode")
+                else:
+                    try:
+                        print("  Scanning all COM ports for MFC devices...")
+                        results = controller._connection_manager.discover_all_ports()
+
+                        if results:
+                            print(f"\n  Found devices on {len(results)} port(s):\n")
+                            for port, devices in results.items():
+                                print(f"  {port}:")
+                                for dev in devices:
+                                    print(f"    - Node {dev.address:3d}: {dev.device_type} (S/N: {dev.serial})")
+                            print(f"\n  Use 'add <name> <node> <gas>' to add devices")
+                            print(f"  Or use 'autosetup' for interactive configuration")
+                        else:
+                            print("  No MFC devices found on any port")
+                    except Exception as e:
+                        print(f"  Error during scan: {e}")
+
+            elif cmd == "autosetup":
+                if controller.use_mock:
+                    print("  Error: Cannot auto-setup in mock mode")
+                else:
+                    try:
+                        print("  Auto-discovering MFC devices...\n")
+                        results = controller._connection_manager.discover_all_ports()
+
+                        if not results:
+                            print("  No MFC devices found on any port")
+                        else:
+                            added_count = 0
+                            for port, devices in results.items():
+                                print(f"\n  Port: {port}")
+                                for dev in devices:
+                                    print(f"\n  Found: {dev.device_type} at node {dev.address}")
+                                    print(f"  Serial: {dev.serial}")
+
+                                    name = input(f"    Enter name (or press Enter to skip): ").strip()
+                                    if name:
+                                        if name in controller.list_mfcs():
+                                            print(f"    Warning: '{name}' already exists, skipping")
+                                            continue
+
+                                        gas = input(f"    Enter gas type (CH4/H2/Air/N2/O2): ").strip()
+                                        if not gas:
+                                            print(f"    Skipping (no gas type provided)")
+                                            continue
+
+                                        try:
+                                            controller.add_mfc(name, port, dev.address, gas, auto_connect=True)
+                                            print(f"    ✓ Added '{name}' ({gas})")
+                                            added_count += 1
+                                        except Exception as e:
+                                            print(f"    ✗ Error: {e}")
+
+                            print(f"\n  Setup complete: {added_count} device(s) added")
+
+                    except Exception as e:
+                        print(f"  Error during auto-setup: {e}")
+
             elif cmd == "discover":
                 if controller.use_mock:
                     print("  Error: Cannot discover devices in mock mode")

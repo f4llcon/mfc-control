@@ -35,7 +35,9 @@ from mfc_control.hardware.mock import MockMFC, MockCoriFlow
 from mfc_control.hardware.connection import (
     ConnectionManager,
     DiscoveredDevice,
+    PortInfo,
     discover_devices,
+    list_available_ports,
 )
 
 __version__ = "0.1.0"
@@ -60,5 +62,7 @@ __all__ = [
     # Connection/Discovery
     "ConnectionManager",
     "DiscoveredDevice",
+    "PortInfo",
     "discover_devices",
+    "list_available_ports",
 ]

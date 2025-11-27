@@ -13,7 +13,52 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+try:
+    import serial.tools.list_ports
+    SERIAL_TOOLS_AVAILABLE = True
+except ImportError:
+    SERIAL_TOOLS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PortInfo:
+    """Information about an available COM port."""
+    device: str
+    description: str
+    manufacturer: str = ""
+
+    def __str__(self) -> str:
+        if self.manufacturer:
+            return f"{self.device}: {self.description} [{self.manufacturer}]"
+        return f"{self.device}: {self.description}"
+
+
+def list_available_ports() -> list[PortInfo]:
+    """
+    List all available COM/serial ports on the system.
+
+    Returns:
+        List of PortInfo objects describing available ports
+
+    Raises:
+        ImportError: If pyserial is not installed
+    """
+    if not SERIAL_TOOLS_AVAILABLE:
+        raise ImportError(
+            "pyserial not installed. Install with: pip install pyserial"
+        )
+
+    ports = []
+    for p in serial.tools.list_ports.comports():
+        ports.append(PortInfo(
+            device=p.device,
+            description=p.description or "Unknown",
+            manufacturer=p.manufacturer or "",
+        ))
+
+    return ports
 
 
 @dataclass
@@ -74,7 +119,7 @@ class ConnectionManager:
     def _get_master(self, com_port: str) -> Any:
         """
         Get or create a master connection for a COM port.
-        
+
         The master handles the low-level FLOW-BUS protocol.
         Multiple instruments on the same port share one master.
         """
@@ -86,12 +131,33 @@ class ConnectionManager:
                     "bronkhorst-propar not installed. "
                     "Install with: pip install bronkhorst-propar"
                 )
-            
+
             logger.info(f"Opening connection to {com_port} at {self.baudrate} baud")
-            master = propar.master(com_port, baudrate=self.baudrate)
-            master.start()
-            self._masters[com_port] = master
-        
+
+            try:
+                master = propar.master(com_port, baudrate=self.baudrate)
+                master.start()
+                self._masters[com_port] = master
+            except Exception as e:
+                # Provide helpful error message with available ports
+                error_msg = f"Failed to open port '{com_port}': {e}"
+
+                try:
+                    available = list_available_ports()
+                    if available:
+                        port_list = ", ".join(p.device for p in available)
+                        error_msg += f"\n\nAvailable COM ports: {port_list}"
+                        error_msg += f"\n\nCommon causes:"
+                        error_msg += f"\n  1. Another program has {com_port} open"
+                        error_msg += f"\n  2. Wrong port number (check Device Manager)"
+                        error_msg += f"\n  3. Device not connected or powered off"
+                    else:
+                        error_msg += "\n\nNo COM ports found on system"
+                except:
+                    pass  # If we can't list ports, just show original error
+
+                raise ConnectionError(error_msg)
+
         return self._masters[com_port]
     
     def discover_devices(self, com_port: str) -> list[DiscoveredDevice]:
@@ -131,7 +197,60 @@ class ConnectionManager:
         
         logger.info(f"Found {len(devices)} device(s) on {com_port}")
         return devices
-    
+
+    def discover_all_ports(self) -> dict[str, list[DiscoveredDevice]]:
+        """
+        Scan ALL available COM ports for MFC devices.
+
+        This method automatically enumerates all serial ports on the system
+        and attempts to discover MFC devices on each one.
+
+        Returns:
+            Dictionary mapping port name -> list of devices found on that port
+            Only ports with MFC devices are included in the result.
+
+        Raises:
+            ImportError: If pyserial is not installed
+
+        Example:
+            >>> manager = ConnectionManager()
+            >>> results = manager.discover_all_ports()
+            >>> for port, devices in results.items():
+            ...     print(f"{port}: {len(devices)} device(s)")
+            ...     for dev in devices:
+            ...         print(f"  - {dev}")
+            COM3: 2 device(s)
+              - Node   1: F-201CV (S/N: M12345678A)
+              - Node   7: F-201CV (S/N: M12345679B)
+        """
+        available_ports = list_available_ports()
+
+        if not available_ports:
+            logger.warning("No COM ports found on system")
+            return {}
+
+        logger.info(f"Scanning {len(available_ports)} available port(s) for MFC devices...")
+
+        results = {}
+        for port_info in available_ports:
+            try:
+                logger.debug(f"Checking {port_info.device}...")
+                devices = self.discover_devices(port_info.device)
+                if devices:
+                    results[port_info.device] = devices
+                    logger.info(f"{port_info.device}: Found {len(devices)} device(s)")
+            except Exception as e:
+                logger.debug(f"Could not scan {port_info.device}: {e}")
+                continue
+
+        if not results:
+            logger.warning("No MFC devices found on any port")
+        else:
+            total_devices = sum(len(devs) for devs in results.values())
+            logger.info(f"Discovery complete: {total_devices} device(s) on {len(results)} port(s)")
+
+        return results
+
     def get_instrument(self, com_port: str, node_address: int) -> Any:
         """
         Get an instrument connection for a specific device.
