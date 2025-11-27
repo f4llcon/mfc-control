@@ -152,7 +152,7 @@ class ConnectionManager:
                         error_msg += f"\n  3. Device not connected or powered off"
                     else:
                         error_msg += "\n\nNo COM ports found on system"
-                except:
+                except Exception:
                     pass  # If we can't list ports, just show original error
 
                 raise ConnectionError(error_msg)

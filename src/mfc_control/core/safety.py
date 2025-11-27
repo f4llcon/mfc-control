@@ -71,9 +71,9 @@ class SafetyManager:
         air_name = air_mfc_name or self.air_mfc_name
         
         logger.warning("Starting purge sequence")
-        
+
         # Step 1: Close fuel valves
-        for name, mfc in self.controller._mfcs.items():
+        for name, mfc in self.controller.mfc_items():
             if name != air_name and mfc.is_connected:
                 try:
                     mfc.close_valve()
@@ -134,7 +134,7 @@ class SafetyManager:
             True if all flows are below threshold
         """
         all_zero = True
-        for name, mfc in self.controller._mfcs.items():
+        for name, mfc in self.controller.mfc_items():
             if mfc.is_connected:
                 try:
                     flow = mfc.read_flow_mfc()

@@ -79,10 +79,13 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         # Cleanup - ALWAYS close the connection
         if instrument is not None:
             try:
-                # Close the instrument connection
-                if hasattr(instrument, 'close'):
+                # propar.instrument doesn't have close(), but has master.stop()
+                if hasattr(instrument, 'master') and hasattr(instrument.master, 'stop'):
+                    instrument.master.stop()
+                    logger.debug(f"Closed connection to {com_port}")
+                elif hasattr(instrument, 'close'):
                     instrument.close()
-                logger.debug(f"Closed connection to {com_port}")
+                    logger.debug(f"Closed connection to {com_port}")
             except Exception as e:
                 logger.debug(f"Error during cleanup: {e}")
 
