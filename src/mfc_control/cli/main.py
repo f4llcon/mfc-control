@@ -292,6 +292,8 @@ def run_interactive(controller: MFCController) -> None:
                             devices = controller._connection_manager.discover_devices(specific_port)
 
                             if devices:
+                                # Remember this port for the add command
+                                controller._discovery_port = specific_port
                                 print(f"  ✓ Found {len(devices)} device(s) on {specific_port}:\n")
                                 for dev in devices:
                                     print(f"    - Node {dev.address:3d}: {dev.device_type} (S/N: {dev.serial})")
