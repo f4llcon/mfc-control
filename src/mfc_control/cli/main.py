@@ -58,6 +58,7 @@ Available Commands:
   scan [port]            Scan for MFC devices (all ports or specific port, e.g., scan COM6)
   discover               Scan specific port for devices (uses --port from startup)
   diagnose <port> [node] Deep diagnostic test (e.g., diagnose COM6 1)
+  reset                  Close all connections (fixes "port already open" errors)
   autosetup              Auto-discover and interactively add devices
 
   read <name>            Read current flow from MFC
@@ -401,6 +402,20 @@ def run_interactive(controller: MFCController) -> None:
                     except Exception as e:
                         print(f"  Error during diagnostics: {e}")
                         logger.exception("Diagnostic error")
+
+            elif cmd == "reset":
+                if controller.use_mock:
+                    print("  (Mock mode - no connections to reset)")
+                else:
+                    try:
+                        if controller._connection_manager is not None:
+                            controller._connection_manager.close_all()
+                            print("  ✓ All connections closed")
+                            print("  You can now scan/diagnose ports again")
+                        else:
+                            print("  No connection manager to reset")
+                    except Exception as e:
+                        print(f"  Error resetting connections: {e}")
 
             # ─────────────────────────────────────────────────────────────
             # Dynamic MFC management
