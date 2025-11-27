@@ -57,6 +57,7 @@ Available Commands:
   ports                  List all available COM ports on system
   scan [port]            Scan for MFC devices (all ports or specific port, e.g., scan COM6)
   discover               Scan specific port for devices (uses --port from startup)
+  diagnose <port> [node] Deep diagnostic test (e.g., diagnose COM6 1)
   autosetup              Auto-discover and interactively add devices
 
   read <name>            Read current flow from MFC
@@ -382,7 +383,25 @@ def run_interactive(controller: MFCController) -> None:
                             print("  No devices found")
                     except Exception as e:
                         print(f"  Error: {e}")
-            
+
+            elif cmd == "diagnose":
+                if controller.use_mock:
+                    print("  Error: Cannot diagnose in mock mode")
+                elif len(args) < 1:
+                    print("  Usage: diagnose <port> [node_address]")
+                    print("  Example: diagnose COM6 1")
+                else:
+                    try:
+                        from mfc_control.cli.diagnostics import diagnose_connection_issue
+                        port = args[0]
+                        node = int(args[1]) if len(args) > 1 else 1
+
+                        recommendation = diagnose_connection_issue(port, node)
+                        print(f"\n{recommendation}\n")
+                    except Exception as e:
+                        print(f"  Error during diagnostics: {e}")
+                        logger.exception("Diagnostic error")
+
             # ─────────────────────────────────────────────────────────────
             # Dynamic MFC management
             # ─────────────────────────────────────────────────────────────
