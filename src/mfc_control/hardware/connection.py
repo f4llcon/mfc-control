@@ -136,7 +136,6 @@ class ConnectionManager:
 
             try:
                 master = propar.master(com_port, baudrate=self.baudrate)
-                master.start()
                 self._masters[com_port] = master
             except Exception as e:
                 # Provide helpful error message with available ports
