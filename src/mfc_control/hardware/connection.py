@@ -246,7 +246,16 @@ class ConnectionManager:
                 error_msg = str(e).split('\n')[0]  # Get first line only
                 logger.warning(f"{port_info.device}: {error_msg}")
                 errors.append((port_info.device, error_msg))
+            except ValueError as e:
+                # ValueError often means non-MFC device (e.g., "bytes must be in range(0, 256)")
+                if "bytes must be in range" in str(e) or "byte" in str(e).lower():
+                    logger.info(f"{port_info.device}: Not an MFC device (incompatible protocol)")
+                    # Don't add to errors list - this is expected for non-MFC ports
+                else:
+                    logger.warning(f"{port_info.device}: {e}")
+                    errors.append((port_info.device, str(e)))
             except Exception as e:
+                # Other errors (timeouts, protocol errors, etc.)
                 logger.debug(f"Could not scan {port_info.device}: {e}")
                 errors.append((port_info.device, str(e)))
             finally:
@@ -255,9 +264,9 @@ class ConnectionManager:
 
         if not results:
             if errors:
-                logger.warning(f"No MFC devices found. {len(errors)} port(s) had access errors")
+                logger.warning(f"No MFC devices found. {len(errors)} port(s) had issues (check logs for details)")
             else:
-                logger.warning("No MFC devices found on any port")
+                logger.info("No MFC devices found on any port")
         else:
             total_devices = sum(len(devs) for devs in results.values())
             logger.info(f"Discovery complete: {total_devices} device(s) on {len(results)} port(s)")
