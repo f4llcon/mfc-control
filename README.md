@@ -1,16 +1,18 @@
 # MFC Control System
 
-A Python application for controlling Bronkhorst Mass Flow Controllers (MFCs) in combustion experiments.
+Python application for controlling Bronkhorst Mass Flow Controllers (MFCs) in combustion experiments.
 
 ## Features
 
-- **Dynamic MFC Management**: Add and remove MFCs at runtime without code changes
+- **Dynamic Port Discovery**: Automatically scan and detect MFC devices on all COM ports
+- **Dynamic MFC Management**: Add and remove MFCs at runtime
 - **Calibration System**: Bidirectional conversion between MFC readings and real gas flow rates
 - **Multiple Operating Modes**:
   - Manual: Direct control of individual gas flows
   - Volume: Specify total flow rate + equivalence ratio
   - Power: Specify thermal power output + equivalence ratio
 - **Safety Features**: Purge sequences, emergency stop, deviation monitoring
+- **Diagnostics**: Built-in tools for troubleshooting hardware communication
 - **Mock Mode**: Full testing without hardware connection
 
 ## Installation
@@ -39,13 +41,35 @@ mfc-cli --mock
 ### Connecting to real MFCs
 
 ```bash
-mfc-cli --port COM1
+# Auto-discover devices on all ports
+mfc-cli
+mfc> autosetup
+
+# Or scan a specific port
+mfc> scan COM6
+mfc> add helium 5 He
+mfc> set helium 2.5
+mfc> status
 ```
+
+### CLI Commands
+
+- `ports` - List all available COM ports
+- `scan [port]` - Scan for MFC devices (all ports or specific port)
+- `diagnose <port> <node>` - Test communication with a device
+- `autosetup` - Interactive device discovery and configuration
+- `add <name> <node> <gas>` - Add an MFC (uses last scanned port)
+- `remove <name>` - Remove an MFC
+- `set <name> <flow>` - Set flow rate in l/min
+- `read <name>` - Read current flow
+- `status` - Show all devices
+- `reset` - Close all port connections
+- `help` - Show all commands
 
 ### Python API
 
 ```python
-from mfc_control import MFCController, MFC, Calibration
+from mfc_control import MFCController, Calibration
 
 # Create controller
 controller = MFCController()
@@ -59,8 +83,8 @@ ch4_cal = Calibration(
 # Add MFC
 controller.add_mfc(
     name="CH4_main",
-    com_port="COM1", 
-    node_address=1,
+    com_port="COM6",
+    node_address=5,
     gas_type="CH4",
     calibration=ch4_cal
 )
@@ -83,18 +107,50 @@ mfc-control/
 ├── src/mfc_control/
 │   ├── core/           # MFC, Controller, Calibration, Safety
 │   ├── combustion/     # Gas properties, calculations
-│   ├── hardware/       # ProPar wrapper, mock devices
-│   └── cli/            # Command-line interface
-├── tests/              # Unit tests
+│   ├── hardware/       # ProPar wrapper, connection manager, mock devices
+│   └── cli/            # Command-line interface, diagnostics
+├── tests/              # Unit tests (use mock devices)
 ├── data/calibrations/  # Calibration data files
 └── docs/               # Documentation and manuals
 ```
 
 ## Hardware Requirements
 
-- Bronkhorst MFCs with FLOW-BUS interface
-- RS232 serial connection (USB-to-Serial adapter works)
-- Windows PC (Linux support planned)
+- Bronkhorst MFCs with FLOW-BUS interface (RS232/RS485)
+- RS232 serial connection (USB-to-Serial adapter supported)
+- Windows PC (tested on Windows 10/11)
+
+## How It Works
+
+### FLOW-BUS Protocol
+
+Multiple MFC devices can share a single COM port using the FLOW-BUS protocol (RS485 multidrop):
+- Each device has a unique node address (1-127)
+- Example: COM6 might have nodes 1, 5, 7, 10 for different gases
+- Communication at 38400 baud (standard for Bronkhorst)
+
+### Calibration
+
+MFCs are factory-calibrated for nitrogen. For other gases, calibration tables convert between:
+- MFC readings (device units, 0-1)
+- Real flow rates (l/min)
+
+Default calibrations provided for CH4, H2, Air, and Cori-Flow meters.
+
+### Testing
+
+Tests use mock devices (no hardware required):
+
+```bash
+pytest  # Run all tests
+pytest tests/test_mfc.py -v  # Run specific test file
+```
+
+All tests pass without hardware. They verify:
+- Calibration math
+- Gas property calculations
+- MFC API logic
+- Safety sequences
 
 ## Safety Notes
 
@@ -104,6 +160,23 @@ mfc-control/
 2. Test with mock mode before connecting to hardware
 3. Keep manual shutoff valves accessible
 4. Never leave unattended during operation
+
+## Troubleshooting
+
+### Port Access Errors
+
+If you see "Zugriff verweigert" or "Access denied":
+1. Run `reset` command to close stuck connections
+2. Close other programs using the port (PuTTY, Arduino IDE, etc.)
+3. Check Windows Device Manager for port conflicts
+
+### Device Not Responding
+
+If `diagnose` shows "Cannot read parameters":
+1. Verify device is powered on
+2. Check node address matches device configuration
+3. Verify wiring (RX/TX, ground)
+4. Check termination resistors on FLOW-BUS
 
 ## License
 

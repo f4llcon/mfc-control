@@ -36,14 +36,12 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
 
     instrument = None
     try:
-        # Step 1: Create instrument (this opens port and initializes connection)
         logger.info(f"Opening connection to {com_port} at {baudrate} baud...")
         instrument = propar.instrument(com_port, address=node_address, baudrate=baudrate)
         results['port_opens'] = True
         results['instrument_created'] = True
         logger.info(f"✓ Instrument created for node {node_address} on {com_port}")
 
-        # Step 2: Try to read parameters from the device
         test_params = {
             'capacity': 21,
             'measure': 205,
@@ -76,10 +74,8 @@ def test_raw_communication(com_port: str, node_address: int, baudrate: int = 384
         logger.error(f"✗ Failed to create instrument: {e}")
 
     finally:
-        # Cleanup - ALWAYS close the connection
         if instrument is not None:
             try:
-                # propar.instrument doesn't have close(), but has master.stop()
                 if hasattr(instrument, 'master') and hasattr(instrument.master, 'stop'):
                     instrument.master.stop()
                     logger.debug(f"Closed connection to {com_port}")
